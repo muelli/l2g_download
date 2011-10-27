@@ -18,11 +18,13 @@ class l2gURLopener(urllib.FancyURLopener):
 	version = "Mozilla 5.0"
 
 def findInPath(prog):
-	for path in os.environ["PATH"].split(os.pathsep):
+	paths = os.environ["PATH"].split(os.pathsep)
+	for path in paths:
 		exe_file = os.path.join(path, prog)
 		if os.path.exists(exe_file) and os.access(exe_file, os.X_OK):
 			return exe_file
-	return False
+	raise RuntimeError("Could not find %s, please install in path %s" %
+	                    (prog, paths))
 
 def main():
 	parser = argparse.ArgumentParser(description='Download lectures from lecture2go')
