@@ -5,6 +5,7 @@
 #
 # Licensed under GPL Version 3 or later
 
+from collections import namedtuple
 import os
 import urllib
 import re
@@ -26,11 +27,64 @@ def findInPath(prog):
 	raise RuntimeError("Could not find %s, please install in path %s" %
 	                    (prog, paths))
 
+class Video(namedtuple('Video', 'url, name, page')):
+    
+    def guess_proper_downloader(self, url=None):
+        url = url or self.url
+        if not url: raise AttributeError('url not defined in %s' % str(self))
+        if url.endswith('.mp4'):
+            downloader = WgetDownloader
+        elif url.startswith('rtmp://'):
+            downloader = RTMPDownloader
+        else:
+            raise RuntimeError('Could not find appropriate downloader for %s', url)
+        
+        return downloader
+    
+    @property
+    def download(self, downloader=None, target=None):
+        if not downloader:
+            downloader = self.guess_proper_downloader(self.url)
+        return downloader(url=self.url, target=target)
+
+class IDownloader(dict):
+    '''Interface for a downloader class'''
+    
+    @property
+    def command(self):
+        attr = 'command_formatter'
+        formatter = getattr(self, attr, None) or self[attr]
+        assert isinstance(formatter, list)
+        command = [s % self for s in formatter]
+        return command
+    
+    def download(self):
+        subprocess.Popen(self.command, shell=False).wait()
+        return
+        
+class WgetDownloader(IDownloader):
+    @property
+    def command_formatter(self):
+        fmt = "wget --continue".split()
+        if self.get('target', None):
+            fmt += ["-O", "%(target)s"]
+        fmt += ["%(url)s",]
+        return fmt
+
+class RTMPDownloader(IDownloader):
+    @property
+    def command_formatter(self):
+        fmt = "rtmpdump --resume --rtmp".split()
+        fmt += ["%(url)s",]
+        fmt += ["-e", "-o", "%(target)s"]
+        return fmt
+        
 def main():
 	parser = argparse.ArgumentParser(description='Download lectures from lecture2go')
 	parser.add_argument('url', help="URL to the lecture's video feed")
 	parser.add_argument('-l', '--list-cmd', action='store_true', help='Prints list of commands to fetch videos without actually downloading')
 	parser.add_argument('-n', '--number', action='store_true', help='Name downloaded files in chronological order')
+	parser.add_argument('-c', '--cwd', help='Change working directory')
 	args = parser.parse_args()
 
 	if args.url[-8:] != ".mp4.xml":
@@ -44,7 +98,11 @@ def main():
 	if args.number:
 		number_files = True
 
-	loader = l2gURLopener();
+	curdir = os.path.abspath(os.curdir)
+	if args.cwd:
+	    os.chdir(args.cwd)
+	
+	loader = l2gURLopener()
 	#feed = loader.open(args.url).read()
 	feed = loader.open(args.url)
 
@@ -55,34 +113,32 @@ def main():
 	for item in dom.getElementsByTagName("item"):
 		videoName = item.getElementsByTagName("title").item(0).firstChild.nodeValue
 		videoPage = item.getElementsByTagName("link").item(0).firstChild.nodeValue
-		videos.append((videoName, videoPage))
+		enclosure = item.getElementsByTagName("enclosure").item(0)
+		if enclosure:
+		    videoURL = enclosure.getAttribute('url')
+		else:
+		    videoURL = None
+		    # We skip items that are not downloadable
+		    continue
+		video = Video(name=videoName, url=videoURL, page=videoPage)
+		videos.append(video)
 
 	videos.sort()
 
-	downloads = []
-	for (videoName, videoPage) in videos:
-		pageText = loader.open(videoPage).read()
-		playerParams = re.search(r'showPlayer\(("rtmp",.*)\)',pageText).group(1)
-		playerParams = playerParams.replace('","', '|').replace('"', '').split('|')
-		videoURL = 'rtmp://fms.rrz.uni-hamburg.de:1935/vod/mp4:/' + playerParams[3] + '/' + playerParams[4]
-		downloads.append((videoURL, videoName))
-
-	number = 0
+	downloads = [v.download for v in videos]
 	padding = int(math.log10(len(videos)))+1
 
-	for (videoURL, videoName) in downloads:
-		number = number + 1
+	for number, download in enumerate(downloads):
 		num = ""
 		if (number_files):
 			num = "%0*d-"%(padding, number)
-		fileName = num + videoName + ".flv"
-		command = [findInPath("rtmpdump")]
-		command.extend(["-r", videoURL, "-e", "-o", fileName])
 		if list_cmd:
-			print ' '.join(command)
+			print ' '.join(download.command)
 		else:
-			print "Getting " + fileName
-			subprocess.Popen(command, shell=False).wait()
+			print "Getting %s " % download
+			download.download()
+
+	os.chdir(curdir)
 
 if __name__ == "__main__":
 	main()
