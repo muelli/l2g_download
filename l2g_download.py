@@ -28,7 +28,7 @@ def findInPath(prog):
 
 def main():
 	parser = argparse.ArgumentParser(description='Download lectures from lecture2go')
-	parser.add_argument('url', help='URL to the lecture\'s video feed')
+	parser.add_argument('url', help="URL to the lecture's video feed")
 	parser.add_argument('-l', '--list-cmd', action='store_true', help='Prints list of commands to fetch videos without actually downloading')
 	parser.add_argument('-n', '--number', action='store_true', help='Name downloaded files in chronological order')
 	args = parser.parse_args()
