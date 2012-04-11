@@ -12,8 +12,11 @@ import re
 import argparse
 import sys
 import subprocess
+import logging
 import math
 from xml.dom.minidom import parse
+
+log = logging.getLogger('l2g_download.main')
 
 class l2gURLopener(urllib.FancyURLopener):
 	version = "Mozilla 5.0"
@@ -85,7 +88,14 @@ def main():
 	parser.add_argument('-l', '--list-cmd', action='store_true', help='Prints list of commands to fetch videos without actually downloading')
 	parser.add_argument('-n', '--number', action='store_true', help='Name downloaded files in chronological order')
 	parser.add_argument('-c', '--cwd', help='Change working directory')
+	parser.add_argument('-v', '--verbosity', default='WARN',
+	                    choices='DEBUG INFO WARN ERROR'.split(),
+	                    help="Choose a log level from DEBUG, INFO, WARN or ERROR "
+	                    "(default: %(default)s)")
+	parser.set_defaults(verbosity='WARN')
 	args = parser.parse_args()
+	
+	logging.basicConfig(level=getattr(logging, args.verbosity))
 
 	if args.url[-8:] != ".mp4.xml":
 		sys.exit("ERROR: URL is not a video feed")
@@ -124,7 +134,8 @@ def main():
 		videos.append(video)
 
 	videos.sort()
-
+	log.info("Got the following videos: %s", videos)
+    
 	downloads = [v.download for v in videos]
 	padding = int(math.log10(len(videos)))+1
 
